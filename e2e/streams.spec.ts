@@ -31,13 +31,17 @@ test.describe('automatic stream count', () => {
 
   test.describe('left unanswered', () => {
     // As in the app, a request with no answer is noticed as silent before it times out.
-    test.use({ appEnv: { FLUXFETCH_E2E_STALL_MS: '20000' } })
+    // Keep this above the app's silent-network detection interval (5s), while short enough that
+    // unanswered connections cannot consume the entire 60s Playwright test budget.
+    test.use({ appEnv: { FLUXFETCH_E2E_STALL_MS: '10000' } })
 
     test('a server that leaves extra connections unanswered keeps the ones it answers', async ({
       fluxfetch,
       serve
     }) => {
-      const origin = await serve({ size: 256 * BLOCK, bytesPerSecond: 256 * 1024 })
+      // Keep the transfer long enough for the unanswered connections to be noticed and the
+      // stream count to grow, without generating a needlessly large update history.
+      const origin = await serve({ size: 64 * BLOCK, bytesPerSecond: 64 * 1024 })
       const accepted = new Set<number>()
       origin.setRule(({ connection, range }) => {
         if (range?.start === 0 && range.end === 0) return undefined // the probe

@@ -1,8 +1,8 @@
 {
   "name": "fluxfetch",
-  "version": "3.0.0",
+  "version": "3.0.2",
   "packageManager": "traversal@1.0.0",
-  "description": "Speed up downloads by combining multiple network connections in parallel",
+  "description": "Manage direct downloads, torrents, and browser transfers in one Windows app",
   "main": "./out/main/index.js",
   "author": {
     "name": "FluxFetch"

@@ -1,7 +1,8 @@
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { createServer, request } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { networkInterfaces } from 'node:os'
+import { resolve } from 'node:path'
 
 /** Validate a distinct source address for the network fixtures. These exercise socket binding,
  * accounting and simulated interface changes; they do not measure physical WAN aggregation. */
@@ -57,5 +58,15 @@ export default async function globalSetup(): Promise<void> {
     )
   }
   if (process.env.FLUXFETCH_E2E_SKIP_BUILD === '1') return
-  execSync('npx electron-vite build --config config/electron.vite.config.ts', { stdio: 'inherit' })
+  const projectRoot = resolve(__dirname, '..')
+  execFileSync(
+    process.execPath,
+    [
+      resolve(projectRoot, 'node_modules/electron-vite/bin/electron-vite.js'),
+      'build',
+      '--config',
+      'config/electron.vite.config.ts'
+    ],
+    { cwd: projectRoot, stdio: 'inherit' }
+  )
 }

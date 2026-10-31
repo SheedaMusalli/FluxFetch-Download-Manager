@@ -221,7 +221,15 @@ test.describe('UI journeys @smoke', () => {
     )
     await fluxfetch.page.reload()
 
-    await fluxfetch.page.getByLabel('Select all removable downloads').check()
+    const firstSelection = fluxfetch.page.getByLabel('Select keep-first.zip')
+    const firstSelectionTarget = await firstSelection.locator('..').boundingBox()
+    expect(firstSelectionTarget?.width).toBeGreaterThanOrEqual(32)
+    expect(firstSelectionTarget?.height).toBeGreaterThanOrEqual(32)
+    const selectAll = fluxfetch.page.getByLabel('Select all removable downloads')
+    const selectAllTarget = await selectAll.locator('..').boundingBox()
+    expect(selectAllTarget?.width).toBeGreaterThanOrEqual(32)
+    expect(selectAllTarget?.height).toBeGreaterThanOrEqual(32)
+    await selectAll.check()
     await expect(fluxfetch.page.getByRole('status')).toHaveText('2 selected · Files stay on disk')
     await expect(fluxfetch.page.getByLabel('Select active.zip')).toBeDisabled()
     await fluxfetch.page.getByRole('button', { name: 'Remove from history' }).click()
@@ -410,9 +418,40 @@ test.describe('UI journeys @smoke', () => {
     await page.getByRole('button', { name: 'Add to queue' }).click()
     await expect(page.getByText('Waiting (2)')).toBeVisible()
     await expect(page.getByText('alpha.zip')).toBeVisible()
-    await page.getByRole('button', { name: 'Cancel alpha.zip' }).click()
+    const cancel = page.getByRole('button', { name: 'Cancel alpha.zip' })
+    const cancelBounds = await cancel.boundingBox()
+    expect(cancelBounds?.width).toBeGreaterThanOrEqual(32)
+    expect(cancelBounds?.height).toBeGreaterThanOrEqual(32)
+    await cancel.click()
     await expect(page.getByText('Waiting (1)')).toBeVisible()
     await expect(page.getByText('beta.zip')).toBeVisible()
+  })
+
+  test('queue preview skips repeated links and links already waiting', async ({ fluxfetch }) => {
+    const page = fluxfetch.page
+    await page.getByRole('button', { name: /^Open download queue/ }).click()
+    await page
+      .getByRole('textbox', { name: 'Download links' })
+      .fill(
+        'https://example.com/repeat.zip\nhttps://EXAMPLE.com/repeat.zip\nhttps://example.com/other.zip'
+      )
+    await page.locator('input[type="datetime-local"]').fill('2099-01-01T12:00')
+    await expect(page.getByText(/3 pasted · 2 new · 1 duplicates skipped/)).toBeVisible()
+    await page.getByRole('button', { name: 'Add to queue' }).click()
+    await expect(page.getByRole('status')).toHaveText('Added 2 links. Skipped 1 duplicate link.')
+    await expect(page.getByText('Waiting (2)')).toBeVisible()
+    await expect(page.getByText('repeat.zip')).toHaveCount(1)
+    await expect(page.getByText('other.zip')).toHaveCount(1)
+
+    await page
+      .getByRole('textbox', { name: 'Download links' })
+      .fill('https://example.com/repeat.zip\nhttps://example.com/third.zip')
+    await page.locator('input[type="datetime-local"]').fill('2099-01-01T12:00')
+    await expect(page.getByText(/2 pasted · 1 new · 1 duplicates skipped/)).toBeVisible()
+    await page.getByRole('button', { name: 'Add to queue' }).click()
+    await expect(page.getByRole('status')).toHaveText('Added 1 link. Skipped 1 duplicate link.')
+    await expect(page.getByText('Waiting (3)')).toBeVisible()
+    await expect(page.getByText('third.zip')).toHaveCount(1)
   })
 
   test('queue actions stay visible in a short window', async ({ fluxfetch }) => {
@@ -567,6 +606,270 @@ test.describe('UI journeys @smoke', () => {
     await expect(firstWindow.getByRole('button', { name: 'New Download' })).toBeVisible()
     await expect(fluxfetch.page.getByRole('button', { name: '+ Add URL' })).toBeVisible()
   })
+
+  test('history links can be copied from the row menu', async ({ fluxfetch }) => {
+    const sourceUrl = 'https://example.com/archive.zip?token=fixture'
+    const filePath = 'C:\\FluxFetch-test\\archive.zip'
+    await fluxfetch.page.evaluate(
+      ({ sourceUrl, filePath }) => {
+        localStorage.setItem(
+          'fluxfetch-download-history-v1',
+          JSON.stringify([
+            {
+              id: 'copy-fixture',
+              fileName: 'archive.zip',
+              url: sourceUrl,
+              destinationPath: filePath,
+              status: 'completed',
+              totalBytes: 12,
+              bytesDownloaded: 12,
+              startedAt: Date.now() - 1000,
+              completedAt: Date.now(),
+              peakSpeedBytesPerSec: 0,
+              avgSpeedBytesPerSec: 0
+            }
+          ])
+        )
+      },
+      { sourceUrl, filePath }
+    )
+    await fluxfetch.page.reload()
+    await fluxfetch.page.evaluate(() => {
+      const clipboard = { text: '' }
+      ;(window as Window & { __testClipboard?: { text: string } }).__testClipboard = clipboard
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText: async (text: string) => (clipboard.text = text) }
+      })
+    })
+    const row = fluxfetch.page.locator('tbody tr[data-download-id="copy-fixture"]')
+    await row.click({ button: 'right' })
+    await fluxfetch.page.getByRole('menuitem', { name: 'Copy file name' }).click()
+    await expect(fluxfetch.page.getByRole('status')).toHaveText('File name copied to clipboard.')
+    expect(
+      await fluxfetch.page.evaluate(
+        () => (window as Window & { __testClipboard?: { text: string } }).__testClipboard?.text
+      )
+    ).toBe('archive.zip')
+
+    await row.click({ button: 'right' })
+    await fluxfetch.page.getByRole('menuitem', { name: 'Copy download URL' }).click()
+    await expect(fluxfetch.page.getByRole('status')).toHaveText('Download URL copied to clipboard.')
+    expect(
+      await fluxfetch.page.evaluate(
+        () => (window as Window & { __testClipboard?: { text: string } }).__testClipboard?.text
+      )
+    ).toBe(sourceUrl)
+
+    await row.click({ button: 'right' })
+    await fluxfetch.page.getByRole('menuitem', { name: 'Copy file path' }).click()
+    await expect(fluxfetch.page.getByRole('status')).toHaveText('File path copied to clipboard.')
+    expect(
+      await fluxfetch.page.evaluate(
+        () => (window as Window & { __testClipboard?: { text: string } }).__testClipboard?.text
+      )
+    ).toBe(filePath)
+  })
+
+  test('history search and keyboard shortcuts work; download columns can be sorted', async ({
+    fluxfetch
+  }) => {
+    await fluxfetch.page.evaluate(() => {
+      const now = Date.now()
+      localStorage.setItem(
+        'fluxfetch-download-history-v1',
+        JSON.stringify(
+          [
+            {
+              id: 'zeta',
+              fileName: 'zeta10.zip',
+              totalBytes: 20,
+              bytesDownloaded: 10,
+              speedBytesPerSec: 5,
+              status: 'paused',
+              startedAt: now - 1000
+            },
+            {
+              id: 'alpha',
+              fileName: 'Alpha2.bin',
+              totalBytes: 10,
+              bytesDownloaded: 10,
+              speedBytesPerSec: 10,
+              status: 'completed',
+              startedAt: now
+            }
+          ].map((entry) => ({
+            url: `https://example.com/${entry.id}`,
+            destinationPath: '',
+            completedAt: entry.startedAt + 500,
+            peakSpeedBytesPerSec: 0,
+            avgSpeedBytesPerSec: 0,
+            ...entry
+          }))
+        )
+      )
+    })
+    await fluxfetch.page.reload()
+    const page = fluxfetch.page
+    const search = page.getByRole('textbox', { name: 'Search downloads' })
+    await page.keyboard.press('Control+f')
+    await expect(search).toBeFocused()
+    await search.fill('example.com/alpha')
+    await expect(page.locator('tbody tr[data-download-id]')).toHaveCount(1)
+    await page.keyboard.press('Escape')
+    await expect(search).toHaveValue('')
+    await expect(page.locator('tbody tr[data-download-id]')).toHaveCount(2)
+    await search.fill('alpha')
+    await page.getByRole('button', { name: 'Clear search' }).click()
+    await expect(search).toBeFocused()
+    await expect(page.locator('tbody tr[data-download-id]')).toHaveCount(2)
+
+    const rows = page.locator('tbody tr[data-download-id]')
+    const fileName = async (index: number): Promise<string> =>
+      (await rows.nth(index).locator('td').nth(1).locator('span.truncate').innerText()).trim()
+    const sort = (column: string): ReturnType<typeof page.getByRole> =>
+      page.getByRole('button', { name: new RegExp(`Sort by ${column}`) })
+    await sort('File name').click()
+    await expect.poll(() => fileName(0)).toBe('Alpha2.bin')
+    await sort('File name').click()
+    await expect.poll(() => fileName(0)).toBe('zeta10.zip')
+    await sort('Type').click()
+    await expect.poll(() => fileName(0)).toBe('Alpha2.bin')
+    await sort('Status').click()
+    await expect.poll(() => fileName(0)).toBe('Alpha2.bin')
+    await sort('Progress').click()
+    await expect.poll(() => fileName(0)).toBe('zeta10.zip')
+    await sort('Speed').click()
+    await expect.poll(() => fileName(0)).toBe('zeta10.zip')
+
+    await search.blur()
+    await page.keyboard.press('Control+n')
+    await expect(page.getByRole('button', { name: 'Downloads library' })).toBeVisible()
+    await page.getByRole('button', { name: 'Downloads library' }).click()
+    await page.keyboard.press('Control+Shift+q')
+    await expect(page.getByRole('heading', { name: 'Schedule and batch downloads' })).toBeVisible()
+    await page.locator('[data-slot="dialog-close"]').click()
+  })
+
+  test('library preferences, bulk actions and CSV export work together', async ({ fluxfetch }) => {
+    const page = fluxfetch.page
+    await page.evaluate(() => {
+      const now = Date.now()
+      localStorage.setItem(
+        'fluxfetch-download-history-v1',
+        JSON.stringify(
+          [
+            {
+              id: 'zeta-bulk',
+              fileName: 'zeta10.zip',
+              totalBytes: 20,
+              bytesDownloaded: 20,
+              status: 'completed',
+              startedAt: now - 2000,
+              completedAt: now - 1000,
+              destinationPath: 'C:\\Bulk\\zeta10.zip',
+              url: 'https://example.com/zeta10.zip'
+            },
+            {
+              id: 'alpha-bulk',
+              fileName: 'Alpha2.bin',
+              totalBytes: 10,
+              bytesDownloaded: 10,
+              status: 'error',
+              startedAt: now - 1000,
+              destinationPath: 'C:\\Bulk\\Alpha2.bin',
+              url: 'https://example.com/alpha2.bin'
+            }
+          ].map((entry) => ({
+            peakSpeedBytesPerSec: 0,
+            avgSpeedBytesPerSec: 0,
+            ...entry
+          }))
+        )
+      )
+    })
+    await page.reload()
+
+    await page.getByRole('button', { name: 'Failed', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Failed', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+    await page.reload()
+    await expect(page.locator('tbody tr[data-download-id]')).toHaveCount(1)
+    await expect(page.getByRole('button', { name: 'Failed', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+
+    await page.getByRole('button', { name: 'All downloads', exact: true }).click()
+    const sortName = page.getByRole('button', { name: /Sort by File name/ })
+    await sortName.click()
+    await sortName.click()
+    await page.reload()
+    const rows = page.locator('tbody tr[data-download-id]')
+    await expect(rows).toHaveCount(2)
+    await expect(rows.first()).toHaveAttribute('data-download-id', 'zeta-bulk')
+    await expect(page.getByRole('columnheader', { name: /File name/ })).toHaveAttribute(
+      'aria-sort',
+      'descending'
+    )
+    await expect(page.getByText('Showing 2 of 2')).toBeVisible()
+
+    const search = page.getByRole('textbox', { name: 'Search downloads' })
+    await search.fill('does-not-match')
+    await expect(page.getByText('Showing 0 of 2')).toBeVisible()
+    await expect(page.getByText('No matching downloads')).toBeVisible()
+    await page.getByRole('button', { name: 'Clear search and filters' }).click()
+    await expect(rows).toHaveCount(2)
+
+    await page.evaluate(() => {
+      const clipboard = { text: '' }
+      ;(window as Window & { __bulkClipboard?: { text: string } }).__bulkClipboard = clipboard
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText: async (text: string) => (clipboard.text = text) }
+      })
+    })
+    await search.blur()
+    await page.keyboard.press('Control+a')
+    await expect(page.getByRole('status')).toHaveText('2 selected · Files stay on disk')
+    const clipboard = (): Promise<string | undefined> =>
+      page.evaluate(
+        () => (window as Window & { __bulkClipboard?: { text: string } }).__bulkClipboard?.text
+      )
+    await page.getByRole('button', { name: 'Names' }).click()
+    expect(await clipboard()).toContain('Alpha2.bin')
+    expect(await clipboard()).toContain('zeta10.zip')
+    await page.getByRole('button', { name: 'URLs' }).click()
+    expect(await clipboard()).toContain('https://example.com/alpha2.bin')
+    await page.getByRole('button', { name: 'Paths' }).click()
+    expect(await clipboard()).toContain('C:\\Bulk\\zeta10.zip')
+    await page.getByRole('button', { name: 'Clear selection' }).click()
+    await expect(page.getByRole('button', { name: 'Names' })).toHaveCount(0)
+
+    await page.evaluate(() => {
+      type ExportWindow = Window & { __csvText?: Promise<string>; __csvName?: string }
+      const target = window as ExportWindow
+      URL.createObjectURL = ((blob: Blob) => {
+        target.__csvText = blob.text()
+        return 'blob:fluxfetch-e2e-export'
+      }) as typeof URL.createObjectURL
+      HTMLAnchorElement.prototype.click = function () {
+        target.__csvName = this.download
+      }
+    })
+    await page.getByRole('button', { name: 'Export visible downloads as CSV' }).click()
+    await expect(page.getByRole('status')).toHaveText('Exported 2 visible downloads.')
+    const exported = await page.evaluate(async () => {
+      const target = window as Window & { __csvText?: Promise<string>; __csvName?: string }
+      return { csv: await target.__csvText, name: target.__csvName }
+    })
+    expect(exported.name).toMatch(/^fluxfetch-downloads-\d{4}-\d{2}-\d{2}\.csv$/)
+    const csv = exported.csv ?? ''
+    expect(csv).toContain('"File name","URL","File path"')
+    expect(csv).toContain('"Alpha2.bin","https://example.com/alpha2.bin"')
+  })
 })
 
 // What a user sets is still set after they reload or restart — checked only through what they see.
@@ -578,7 +881,15 @@ test.describe('settings @smoke', () => {
       _electron.BrowserWindow.getAllWindows()[0].setSize(700, 480)
     }, null)
     const page = fluxfetch.page
-    await page.getByRole('button', { name: 'Settings' }).click()
+    const settings = page.getByRole('button', { name: 'Settings' })
+    const settingsBounds = await settings.boundingBox()
+    expect(settingsBounds?.width).toBeGreaterThanOrEqual(32)
+    expect(settingsBounds?.height).toBeGreaterThanOrEqual(32)
+    const themeToggle = page.getByRole('button', { name: /^Switch to (dark|light) theme$/ })
+    const themeBounds = await themeToggle.boundingBox()
+    expect(themeBounds?.width).toBeGreaterThanOrEqual(32)
+    expect(themeBounds?.height).toBeGreaterThanOrEqual(32)
+    await settings.click()
     const dialog = page.getByRole('dialog')
     await expect(dialog.getByRole('heading', { name: 'FluxFetch settings' })).toBeVisible()
     await expect(dialog.getByLabel('After all queued downloads finish')).toHaveCount(0)
@@ -606,7 +917,42 @@ test.describe('settings @smoke', () => {
     const close = dialog.getByRole('button', { name: 'Close' })
     const bounds = await close.boundingBox()
     expect(bounds).not.toBeNull()
-    await page.mouse.click(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2)
+    expect(bounds!.width).toBe(40)
+    expect(bounds!.height).toBe(40)
+    const iconBounds = await close.locator('svg').boundingBox()
+    expect(iconBounds).not.toBeNull()
+    const iconX = iconBounds!.x + iconBounds!.width / 2
+    const iconY = iconBounds!.y + iconBounds!.height / 2
+    expect(iconBounds!.x).toBeGreaterThanOrEqual(bounds!.x)
+    expect(iconBounds!.y).toBeGreaterThanOrEqual(bounds!.y)
+    expect(iconBounds!.x + iconBounds!.width).toBeLessThanOrEqual(bounds!.x + bounds!.width)
+    expect(iconBounds!.y + iconBounds!.height).toBeLessThanOrEqual(bounds!.y + bounds!.height)
+    await page.mouse.move(bounds!.x - 4, bounds!.y - 4)
+    const baseBackground = await close.evaluate(
+      (element) => getComputedStyle(element).backgroundColor
+    )
+    for (const [x, y] of [
+      [iconBounds!.x + 1, iconBounds!.y + 1],
+      [iconX, iconY],
+      [iconBounds!.x + iconBounds!.width - 1, iconBounds!.y + iconBounds!.height - 1]
+    ]) {
+      await page.mouse.move(x, y)
+      await expect.poll(() => close.evaluate((element) => element.matches(':hover'))).toBe(true)
+    }
+    const hoverBackground = await close.evaluate(
+      (element) => getComputedStyle(element).backgroundColor
+    )
+    expect(hoverBackground).not.toBe(baseBackground)
+    expect(
+      await close.evaluate(
+        (button, { x, y }) => {
+          const hit = document.elementFromPoint(x, y)
+          return hit === button || button.contains(hit)
+        },
+        { x: iconX, y: iconY }
+      )
+    ).toBe(true)
+    await page.mouse.click(iconX, iconY)
     await expect(dialog).not.toBeVisible()
   })
 
@@ -648,6 +994,9 @@ test.describe('settings @smoke', () => {
       await page().getByRole('button', { name: 'Not now' }).click()
 
       const themeToggle = page().getByRole('button', { name: /^Switch to (dark|light) theme$/ })
+      const themeBounds = await themeToggle.boundingBox()
+      expect(themeBounds?.width).toBeGreaterThanOrEqual(32)
+      expect(themeBounds?.height).toBeGreaterThanOrEqual(32)
       // After switching, the toggle offers to switch back.
       const labelAfterSwitch = (await themeToggle.getAttribute('aria-label'))!.includes('dark')
         ? 'Switch to light theme'
@@ -658,7 +1007,11 @@ test.describe('settings @smoke', () => {
       await openAddUrl(page())
       await page().getByRole('button', { name: 'Browse…' }).click()
 
-      await page().getByRole('button', { name: 'Edit network' }).first().click()
+      const editNetwork = page().getByRole('button', { name: 'Edit network' }).first()
+      const editBounds = await editNetwork.boundingBox()
+      expect(editBounds?.width).toBeGreaterThanOrEqual(32)
+      expect(editBounds?.height).toBeGreaterThanOrEqual(32)
+      await editNetwork.click()
       await page().getByRole('textbox', { name: 'Name' }).fill('Office fibre')
       await page().getByRole('button', { name: 'Violet' }).click()
       await page().getByRole('button', { name: 'Done' }).click()

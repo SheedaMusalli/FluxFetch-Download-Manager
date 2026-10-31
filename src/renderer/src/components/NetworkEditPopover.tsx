@@ -70,7 +70,7 @@ export function NetworkEditPopover({
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon-xs"
+                  size="icon"
                   aria-label="Edit network"
                   className="shrink-0 text-muted-foreground"
                 >

@@ -25,6 +25,7 @@ export function DownloadQueueDialog({
   const [queue, setQueue] = useState<QueuedDownload[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
 
   useEffect(() => {
     let mounted = true
@@ -44,11 +45,33 @@ export function DownloadQueueDialog({
         .filter(Boolean),
     [urls]
   )
+  const uniqueUrls = useMemo(() => {
+    const identity = (value: string): string => {
+      try {
+        return new URL(value).href
+      } catch {
+        return value
+      }
+    }
+    const seen = new Set(queue.map((item) => identity(item.url)))
+    return parsedUrls.filter((url) => {
+      const key = identity(url)
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }, [parsedUrls, queue])
+  const duplicateCount = parsedUrls.length - uniqueUrls.length
 
   const addToQueue = async (): Promise<void> => {
     setError(null)
+    setNotice(null)
     if (parsedUrls.length === 0) {
       setError('Paste one or more download links, one per line.')
+      return
+    }
+    if (uniqueUrls.length === 0) {
+      setError('Every pasted link is already in the queue or repeated in this list.')
       return
     }
     if (parsedUrls.length > 50) {
@@ -65,7 +88,10 @@ export function DownloadQueueDialog({
     }
     setBusy(true)
     try {
-      await window.fluxfetch.queueDownloads(parsedUrls, destinationDir, scheduledAt)
+      await window.fluxfetch.queueDownloads(uniqueUrls, destinationDir, scheduledAt)
+      setNotice(
+        `Added ${uniqueUrls.length} ${uniqueUrls.length === 1 ? 'link' : 'links'}.${duplicateCount ? ` Skipped ${duplicateCount} duplicate ${duplicateCount === 1 ? 'link' : 'links'}.` : ''}`
+      )
       setUrls('')
       setScheduledFor('')
     } catch (reason) {
@@ -128,10 +154,15 @@ export function DownloadQueueDialog({
           </label>
 
           <div className="text-[10px] text-muted-foreground">
-            {parsedUrls.length} {parsedUrls.length === 1 ? 'link' : 'links'} · saved to{' '}
-            <span className="break-all text-foreground">{destinationDir}</span>
+            {parsedUrls.length} pasted · {uniqueUrls.length} new · {duplicateCount} duplicates
+            skipped · saved to <span className="break-all text-foreground">{destinationDir}</span>
           </div>
 
+          {notice && (
+            <p role="status" className="text-xs text-[var(--color-wifi-text)]">
+              {notice}
+            </p>
+          )}
           {error && (
             <p role="alert" className="text-xs text-destructive">
               {error}
@@ -176,7 +207,7 @@ export function DownloadQueueDialog({
                   <Button
                     type="button"
                     variant="ghost"
-                    size="icon-xs"
+                    size="icon"
                     aria-label={`Cancel ${item.fileName}`}
                     title="Cancel queued download"
                     onClick={() => void cancel(item.id)}
@@ -195,7 +226,7 @@ export function DownloadQueueDialog({
           </Button>
           <Button
             type="button"
-            disabled={busy || parsedUrls.length === 0}
+            disabled={busy || uniqueUrls.length === 0}
             onClick={() => void addToQueue()}
           >
             <ListPlus data-icon="inline-start" />

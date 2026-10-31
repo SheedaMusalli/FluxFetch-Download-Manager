@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { read, key, changedEvent, removeEntries, type Entry } from '../history'
 import { Button } from '../components/ui/button'
 import { TransferFooter } from '../components/TransferFooter'
@@ -9,8 +9,11 @@ import { ArchiveManagerDialog } from '../components/ArchiveManagerDialog'
 import { formatFileSize } from '../utils/format'
 import {
   ArrowDownToLine,
+  ArrowUpDown,
   CircleAlert,
   Clock3,
+  Copy,
+  FileDown,
   FileArchive,
   FileAudio2,
   FileText,
@@ -42,9 +45,62 @@ const DEFAULT_COLUMNS: ColumnDef[] = [
   { id: 'added', label: 'Added', defaultWidth: 95, minWidth: 70 },
   { id: 'completed', label: 'Completed', defaultWidth: 95, minWidth: 70 }
 ]
+const SORTABLE_FIELDS = [
+  'fileName',
+  'size',
+  'progress',
+  'status',
+  'speed',
+  'eta',
+  'type',
+  'added',
+  'completed'
+] as const
+type SortField = (typeof SORTABLE_FIELDS)[number]
+const FILTER_OPTIONS = [
+  'All downloads',
+  'Finished',
+  'Unfinished',
+  'In progress',
+  'Paused',
+  'Cancelled',
+  'Failed'
+] as const
 
 const COLUMNS_STORAGE_KEY = 'fluxfetch-history-column-widths-v2'
 const VISIBLE_COLUMNS_STORAGE_KEY = 'fluxfetch-history-visible-columns-v1'
+const FILTER_STORAGE_KEY = 'fluxfetch-history-filter-v1'
+const SORT_STORAGE_KEY = 'fluxfetch-history-sort-v1'
+
+function readSavedFilter(): string {
+  try {
+    const saved = localStorage.getItem(FILTER_STORAGE_KEY)
+    return saved && FILTER_OPTIONS.includes(saved as (typeof FILTER_OPTIONS)[number])
+      ? saved
+      : 'All downloads'
+  } catch {
+    return 'All downloads'
+  }
+}
+
+function readSavedSort(): { field: SortField; direction: 'asc' | 'desc' } | null {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SORT_STORAGE_KEY) ?? 'null') as {
+      field?: string
+      direction?: string
+    } | null
+    if (
+      saved &&
+      SORTABLE_FIELDS.includes(saved.field as SortField) &&
+      (saved.direction === 'asc' || saved.direction === 'desc')
+    ) {
+      return { field: saved.field as SortField, direction: saved.direction }
+    }
+  } catch {
+    // Ignore an unavailable or malformed preference.
+  }
+  return null
+}
 
 const size = (bytes: number): string => formatFileSize(bytes)
 type LibraryEntry = Entry & { torrentId?: string; transferStatus?: string }
@@ -71,6 +127,13 @@ const calculateEta = (entry: LibraryEntry): string => {
   if (secs < 60) return `${secs}s`
   if (secs < 3600) return `${Math.floor(secs / 60)}m ${secs % 60}s`
   return `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m`
+}
+
+const calculateEtaSeconds = (entry: LibraryEntry): number => {
+  if (entry.status === 'completed') return 0
+  const speedBytes = entry.speedBytesPerSec ?? 0
+  if (!speedBytes || speedBytes <= 0 || !entry.totalBytes) return Number.POSITIVE_INFINITY
+  return Math.ceil(Math.max(0, entry.totalBytes - entry.bytesDownloaded) / speedBytes)
 }
 
 const getEntryType = (entry: LibraryEntry): string => {
@@ -120,8 +183,10 @@ export function HistoryScreen({
   onRetry: (url: string) => void
 }): React.JSX.Element {
   const [entries, setEntries] = useState(read)
-  const [filter, setFilter] = useState('All downloads')
+  const [filter, setFilter] = useState(readSavedFilter)
   const [query, setQuery] = useState('')
+  const searchInput = useRef<HTMLInputElement>(null)
+  const [sort, setSort] = useState(readSavedSort)
   const [selected, setSelected] = useState<LibraryEntry | null>(null)
   const summary = useTransferSummary()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
@@ -242,6 +307,7 @@ export function HistoryScreen({
     setMetadataDescription(entry?.description ?? '')
   }
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   useEffect(() => {
     const close = (): void => {
       setMenu(null)
@@ -259,6 +325,26 @@ export function HistoryScreen({
       window.removeEventListener('storage', refresh)
     }
   }, [])
+  useEffect(() => {
+    try {
+      localStorage.setItem(FILTER_STORAGE_KEY, filter)
+    } catch {
+      // The filter still works for this session if storage is unavailable.
+    }
+  }, [filter])
+  useEffect(() => {
+    try {
+      if (sort) localStorage.setItem(SORT_STORAGE_KEY, JSON.stringify(sort))
+      else localStorage.removeItem(SORT_STORAGE_KEY)
+    } catch {
+      // The sort still works for this session if storage is unavailable.
+    }
+  }, [sort])
+  useEffect(() => {
+    if (!notice) return
+    const timer = window.setTimeout(() => setNotice(''), 2200)
+    return () => window.clearTimeout(timer)
+  }, [notice])
   const saveMetadata = (): void => {
     if (!selected) return
     const updated = {
@@ -299,6 +385,15 @@ export function HistoryScreen({
         : window.fluxfetch.revealInFolder(selected.destinationPath))
     } catch (e) {
       setError(readableActionError(e))
+    }
+  }
+  const copyToClipboard = async (value: string, label: string): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(value)
+      setNotice(`${label} copied to clipboard.`)
+      setError('')
+    } catch {
+      setError('Clipboard access was denied. You can select and copy the value in Properties.')
     }
   }
   const refreshAddressAction = async (): Promise<void> => {
@@ -384,7 +479,7 @@ export function HistoryScreen({
   }
   const rows = library.filter(
     (entry) =>
-      `${entry.fileName} ${entry.tags?.join(' ') ?? ''} ${entry.category ?? ''} ${entry.description ?? ''}`
+      `${entry.fileName} ${entry.url} ${entry.sourcePageUrl ?? ''} ${entry.tags?.join(' ') ?? ''} ${entry.category ?? ''} ${entry.description ?? ''}`
         .toLowerCase()
         .includes(query.toLowerCase()) &&
       (filter === 'All downloads' ||
@@ -395,6 +490,50 @@ export function HistoryScreen({
         (filter === 'Cancelled' && entry.status === 'cancelled') ||
         (filter === 'Failed' && entry.status === 'error'))
   )
+  if (sort) {
+    rows.sort((left, right) => {
+      let result: number
+      switch (sort.field) {
+        case 'fileName':
+          result = left.fileName.localeCompare(right.fileName, undefined, {
+            numeric: true,
+            sensitivity: 'base'
+          })
+          break
+        case 'size':
+          result = left.totalBytes - right.totalBytes
+          break
+        case 'progress':
+          result = getEntryProgress(left).percent - getEntryProgress(right).percent
+          break
+        case 'status':
+          result = (left.transferStatus ?? left.status).localeCompare(
+            right.transferStatus ?? right.status,
+            undefined,
+            { sensitivity: 'base' }
+          )
+          break
+        case 'speed':
+          result = (left.speedBytesPerSec ?? 0) - (right.speedBytesPerSec ?? 0)
+          break
+        case 'eta':
+          result = calculateEtaSeconds(left) - calculateEtaSeconds(right)
+          break
+        case 'type':
+          result = getEntryType(left).localeCompare(getEntryType(right), undefined, {
+            sensitivity: 'base'
+          })
+          break
+        case 'added':
+          result = left.startedAt - right.startedAt
+          break
+        case 'completed':
+          result = (left.completedAt ?? 0) - (right.completedAt ?? 0)
+          break
+      }
+      return sort.direction === 'asc' ? result : -result
+    })
+  }
   const selectableRows = rows.filter(
     (entry) => !entry.torrentId && !['downloading', 'paused'].includes(entry.status)
   )
@@ -417,6 +556,93 @@ export function HistoryScreen({
       }
       return next
     })
+  }
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent): void => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return
+      const target = event.target
+      const editing =
+        target instanceof HTMLElement &&
+        (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))
+      const key = event.key.toLowerCase()
+      if (key === 'f' && !event.shiftKey) {
+        event.preventDefault()
+        searchInput.current?.focus()
+        searchInput.current?.select()
+      } else if (editing) {
+        return
+      } else if (key === 'n' && !event.shiftKey) {
+        event.preventDefault()
+        onAdd()
+      } else if (key === 'q' && event.shiftKey) {
+        event.preventDefault()
+        onQueue()
+      } else if (key === 'a' && !event.shiftKey) {
+        event.preventDefault()
+        setSelectedIds((current) => {
+          const next = new Set(current)
+          for (const entry of selectableRows) next.add(entry.id)
+          return next
+        })
+      }
+    }
+    window.addEventListener('keydown', handleShortcut)
+    return () => window.removeEventListener('keydown', handleShortcut)
+  }, [onAdd, onQueue, selectableRows])
+  const copySelectedField = async (
+    field: 'fileName' | 'url' | 'destinationPath',
+    label: string
+  ): Promise<void> => {
+    const values = rows
+      .filter((entry) => selectedIds.has(entry.id))
+      .map((entry) => entry[field])
+      .filter(Boolean)
+    if (!values.length) return
+    try {
+      await navigator.clipboard.writeText(values.join('\n'))
+      setNotice(`${values.length} ${label} copied to clipboard.`)
+      setError('')
+    } catch {
+      setError('Clipboard access was denied. You can select and copy values in Properties.')
+    }
+  }
+  const exportRows = (): void => {
+    if (!rows.length) return
+    const columns = [
+      ['File name', (entry: LibraryEntry) => entry.fileName],
+      ['URL', (entry: LibraryEntry) => entry.url],
+      ['File path', (entry: LibraryEntry) => entry.destinationPath],
+      ['Status', (entry: LibraryEntry) => entry.transferStatus ?? entry.status],
+      ['Size (bytes)', (entry: LibraryEntry) => entry.totalBytes],
+      ['Downloaded (bytes)', (entry: LibraryEntry) => entry.bytesDownloaded],
+      [
+        'Added',
+        (entry: LibraryEntry) => (entry.startedAt ? new Date(entry.startedAt).toISOString() : '')
+      ],
+      [
+        'Completed',
+        (entry: LibraryEntry) =>
+          entry.completedAt ? new Date(entry.completedAt).toISOString() : ''
+      ]
+    ] as const
+    const escapeCell = (value: string | number): string =>
+      `"${String(value).replaceAll('"', '""')}"`
+    const csv = [
+      columns.map(([header]) => escapeCell(header)).join(','),
+      ...rows.map((entry) => columns.map(([, readValue]) => escapeCell(readValue(entry))).join(','))
+    ].join('\r\n')
+    const blob = new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `fluxfetch-downloads-${new Date().toISOString().slice(0, 10)}.csv`
+    link.style.display = 'none'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    setNotice(`Exported ${rows.length} visible downloads.`)
   }
   const removeSelectedEntries = async (): Promise<void> => {
     const removable = [...selectedIds].filter((id) => {
@@ -577,17 +803,11 @@ export function HistoryScreen({
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-2.5 sm:px-4">
           <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-lg bg-background p-1">
-            {[
-              'All downloads',
-              'Finished',
-              'Unfinished',
-              'In progress',
-              'Paused',
-              'Cancelled',
-              'Failed'
-            ].map((label) => (
+            {FILTER_OPTIONS.map((label) => (
               <button
                 key={label}
+                type="button"
+                aria-pressed={filter === label}
                 onClick={() => {
                   setFilter(label)
                   setSelectedIds(new Set())
@@ -598,34 +818,110 @@ export function HistoryScreen({
               </button>
             ))}
           </div>
-          <label className="flex min-w-40 items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 focus-within:border-primary/70">
+          <div
+            role="search"
+            className="flex min-w-40 items-center gap-2 rounded-lg border border-border bg-background px-3 py-1 focus-within:border-primary/70"
+          >
             <Search className="size-3.5 text-muted-foreground" />
             <input
+              ref={searchInput}
               aria-label="Search downloads"
               placeholder="Search files…"
-              className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+              className="min-w-0 flex-1 bg-transparent py-1 text-xs outline-none placeholder:text-muted-foreground"
               value={query}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape' && query) {
+                  event.preventDefault()
+                  setQuery('')
+                  setSelectedIds(new Set())
+                }
+              }}
               onChange={(e) => {
                 setQuery(e.target.value)
                 setSelectedIds(new Set())
               }}
             />
-          </label>
+            {query && (
+              <button
+                type="button"
+                aria-label="Clear search"
+                title="Clear search"
+                className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary"
+                onClick={() => {
+                  setQuery('')
+                  setSelectedIds(new Set())
+                  searchInput.current?.focus()
+                }}
+              >
+                <XCircle className="size-4" />
+              </button>
+            )}
+          </div>
+          <span aria-live="polite" className="text-[11px] text-muted-foreground">
+            Showing {rows.length} of {library.length}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={rows.length === 0}
+            aria-label="Export visible downloads as CSV"
+            onClick={exportRows}
+          >
+            <FileDown /> Export CSV
+          </Button>
         </div>
         {selectedIds.size > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2">
             <span role="status" className="text-xs text-muted-foreground">
               {selectedIds.size} selected · Files stay on disk
             </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                void removeSelectedEntries().catch((e) => setError(readableActionError(e)))
-              }
-            >
-              <Trash2 /> Remove from history
-            </Button>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!rows.some((entry) => selectedIds.has(entry.id) && entry.fileName)}
+                onClick={() => void copySelectedField('fileName', 'file names')}
+              >
+                <Copy /> Names
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!rows.some((entry) => selectedIds.has(entry.id) && entry.url)}
+                onClick={() => void copySelectedField('url', 'URLs')}
+              >
+                <Copy /> URLs
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!rows.some((entry) => selectedIds.has(entry.id) && entry.destinationPath)}
+                onClick={() => void copySelectedField('destinationPath', 'paths')}
+              >
+                <Copy /> Paths
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedIds(new Set())}
+              >
+                Clear selection
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  void removeSelectedEntries().catch((e) => setError(readableActionError(e)))
+                }
+              >
+                <Trash2 /> Remove from history
+              </Button>
+            </div>
           </div>
         )}
         <div className="min-h-0 flex-1 overflow-auto">
@@ -645,23 +941,58 @@ export function HistoryScreen({
             >
               <tr>
                 <th className="border-b border-border px-2 py-2.5 text-center align-middle w-10">
-                  <input
-                    aria-label="Select all removable downloads"
-                    type="checkbox"
-                    className="mx-auto block size-4"
-                    checked={allVisibleSelected}
-                    disabled={selectableRows.length === 0}
-                    onChange={(event) => toggleVisibleEntries(event.target.checked)}
-                  />
+                  <label className="mx-auto flex size-8 cursor-pointer items-center justify-center rounded-md has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring/50">
+                    <input
+                      aria-label="Select all removable downloads"
+                      type="checkbox"
+                      className="block size-4"
+                      checked={allVisibleSelected}
+                      disabled={selectableRows.length === 0}
+                      onChange={(event) => toggleVisibleEntries(event.target.checked)}
+                    />
+                  </label>
                 </th>
                 {DEFAULT_COLUMNS.filter((col) => visibleColumns[col.id] !== false).map((col) => (
                   <th
                     key={col.id}
+                    aria-sort={
+                      sort?.field === col.id
+                        ? sort.direction === 'asc'
+                          ? 'ascending'
+                          : 'descending'
+                        : 'none'
+                    }
                     title="Right-click to show/hide columns"
                     className="relative border-b border-border px-3 py-2.5 group hover:text-foreground transition-colors overflow-visible"
                   >
                     <div className="flex items-center justify-between min-w-0 pr-1">
-                      <span className="truncate">{col.label}</span>
+                      {SORTABLE_FIELDS.includes(col.id as SortField) ? (
+                        <button
+                          type="button"
+                          aria-label={`Sort by ${col.label}${sort?.field === col.id ? (sort.direction === 'asc' ? ', ascending' : ', descending') : ''}`}
+                          className="flex min-w-0 items-center gap-1 truncate rounded-sm text-left focus-visible:outline-2 focus-visible:outline-primary"
+                          onClick={() => {
+                            const field = col.id as SortField
+                            setSort((current) =>
+                              current?.field === field
+                                ? {
+                                    field,
+                                    direction: current.direction === 'asc' ? 'desc' : 'asc'
+                                  }
+                                : { field, direction: 'asc' }
+                            )
+                          }}
+                        >
+                          <span className="truncate">{col.label}</span>
+                          {sort?.field === col.id ? (
+                            <span aria-hidden="true">{sort.direction === 'asc' ? '↑' : '↓'}</span>
+                          ) : (
+                            <ArrowUpDown aria-hidden="true" className="size-3 opacity-45" />
+                          )}
+                        </button>
+                      ) : (
+                        <span className="truncate">{col.label}</span>
+                      )}
                     </div>
                     {/* Draggable vertical divider handle matching screenshot */}
                     <div
@@ -719,18 +1050,23 @@ export function HistoryScreen({
                     className={`cursor-default border-b border-border/70 transition-colors ${selected?.id === entry.id ? 'bg-primary/10' : 'hover:bg-background/70'}`}
                   >
                     <td className="px-2 py-3 text-center align-middle">
-                      <input
-                        aria-label={`Select ${entry.fileName}`}
-                        type="checkbox"
-                        className="mx-auto block size-4"
-                        checked={selectedIds.has(entry.id)}
-                        disabled={
-                          Boolean(entry.torrentId) ||
-                          ['downloading', 'paused'].includes(entry.status)
-                        }
+                      <label
+                        className="mx-auto flex size-8 cursor-pointer items-center justify-center rounded-md has-[:disabled]:cursor-not-allowed has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring/50"
                         onClick={(event) => event.stopPropagation()}
-                        onChange={(event) => toggleEntry(entry.id, event.target.checked)}
-                      />
+                      >
+                        <input
+                          aria-label={`Select ${entry.fileName}`}
+                          type="checkbox"
+                          className="block size-4"
+                          checked={selectedIds.has(entry.id)}
+                          disabled={
+                            Boolean(entry.torrentId) ||
+                            ['downloading', 'paused'].includes(entry.status)
+                          }
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={(event) => toggleEntry(entry.id, event.target.checked)}
+                        />
+                      </label>
                     </td>
                     <td className="max-w-72 truncate px-3 py-3" title={entry.fileName}>
                       <span className="flex min-w-0 items-center gap-2.5">
@@ -874,8 +1210,38 @@ export function HistoryScreen({
               <span className="mb-3 flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                 <ArrowDownToLine className="size-5" />
               </span>
-              <p className="font-medium text-foreground">No downloads here yet</p>
-              <p className="mt-1 text-sm">Add a URL or send a download from your browser.</p>
+              <p className="font-medium text-foreground">
+                {library.length === 0
+                  ? 'No downloads here yet'
+                  : query || filter !== 'All downloads'
+                    ? 'No matching downloads'
+                    : 'No downloads match this view'}
+              </p>
+              <p className="mt-1 text-sm">
+                {library.length === 0
+                  ? 'Add a URL or send a download from your browser.'
+                  : 'Try changing your search or status filter.'}
+              </p>
+              {library.length === 0 ? (
+                <Button type="button" className="mt-3" onClick={onAdd}>
+                  + Add URL
+                </Button>
+              ) : (
+                (query || filter !== 'All downloads') && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="mt-3"
+                    onClick={() => {
+                      setQuery('')
+                      setFilter('All downloads')
+                      setSelectedIds(new Set())
+                    }}
+                  >
+                    Clear search and filters
+                  </Button>
+                )
+              )}
             </div>
           )}
         </div>
@@ -894,6 +1260,11 @@ export function HistoryScreen({
         {error && (
           <p role="alert" className="text-destructive">
             {error}
+          </p>
+        )}
+        {notice && (
+          <p role="status" className="text-[var(--color-wifi-text)]">
+            {notice}
           </p>
         )}
       </footer>
@@ -962,6 +1333,21 @@ export function HistoryScreen({
                 ]
               : []),
             ['Refresh Download Address', () => void refreshAddressAction(), false],
+            [
+              'Copy file name',
+              () => void copyToClipboard(selected.fileName, 'File name'),
+              !selected.fileName
+            ],
+            [
+              'Copy download URL',
+              () => void copyToClipboard(selected.url, 'Download URL'),
+              !selected.url
+            ],
+            [
+              'Copy file path',
+              () => void copyToClipboard(selected.destinationPath, 'File path'),
+              !selected.destinationPath
+            ],
             ['Download again', () => onRetry(selected.url), false],
             ['Properties', () => setProperties(true), false],
             [

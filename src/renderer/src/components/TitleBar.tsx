@@ -122,8 +122,8 @@ export function TitleBar({
         <Button
           type="button"
           variant="ghost"
-          size="icon-sm"
-          className="size-[26px] shrink-0 [-webkit-app-region:no-drag]"
+          size="icon"
+          className="shrink-0 [-webkit-app-region:no-drag]"
           onClick={onOpenSettings}
           aria-label="Settings"
           title="Settings"
@@ -135,8 +135,8 @@ export function TitleBar({
         <Button
           type="button"
           variant="ghost"
-          size="icon-sm"
-          className="size-[26px] shrink-0 [-webkit-app-region:no-drag]"
+          size="icon"
+          className="shrink-0 [-webkit-app-region:no-drag]"
           onClick={() => void window.fluxfetch.minimizeToTray()}
           aria-label="Minimize FluxFetch to tray"
           title="Minimize to tray"

@@ -12,7 +12,7 @@ Concurrent downloads · Built-in torrents · Net Merge · OmniLink · Browser in
 [![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011%20x64-9e8cff)](#install-fluxfetch)
 [![License](https://img.shields.io/badge/license-MIT-56d9c0)](LICENSE)
 
-[Download FluxFetch 3.0.0](https://github.com/SheedaMusalli/FluxFetch-Download-Manager/releases/latest) · [Browser setup](docs/BROWSER-SETUP.md) · [What's new in v3](docs/release-notes-3.0.0.md) · [Report an issue](https://github.com/SheedaMusalli/FluxFetch-Download-Manager/issues)
+[Download FluxFetch 3.0.2](https://github.com/SheedaMusalli/FluxFetch-Download-Manager/releases/latest) · [Browser setup](docs/BROWSER-SETUP.md) · [What's new in v3](docs/release-notes-3.0.2.md) · [Report an issue](https://github.com/SheedaMusalli/FluxFetch-Download-Manager/issues)
 
 </div>
 
@@ -20,7 +20,7 @@ FluxFetch is a Windows app for managing downloads and torrents. It can run sever
 
 ## Main features
 
-The Downloads Library shows every active transfer alongside completed history. Direct downloads run at the same time, with their own progress, speed, pause/resume controls, and recovery after restart. You can also queue URL batches, schedule them, and remove history without deleting files.
+The Downloads Library shows every active transfer alongside completed history. Direct downloads run at the same time, with their own progress, speed, pause/resume controls, and recovery after restart. You can queue URL batches, schedule them, and avoid adding links that are already waiting. Library filters and sorting survive a restart; bulk selection can copy names, URLs, or paths, and visible results can be exported to CSV. Press **Ctrl+F** to search, **Ctrl+N** to add a URL, or **Ctrl+Shift+Q** to open the queue. Press **Esc** to clear a search.
 
 FluxFetch handles magnet links and `.torrent` files without a separate torrent client or Python installation. The torrent panel shows files, peers, trackers, and transfer limits; the library keeps each torrent visible while it downloads or seeds.
 
@@ -53,7 +53,7 @@ Open **Net Merge** in the Downloads Library to check adapters and budgets, set s
 ## Install FluxFetch
 
 1. Open [Latest release](https://github.com/SheedaMusalli/FluxFetch-Download-Manager/releases/latest) and expand **Assets**.
-2. Download **`fluxfetch-3.0.0-setup.exe`**. GitHub's **Source code** ZIP is for developers, not installation.
+2. Download **`fluxfetch-3.0.2-setup.exe`**. GitHub's **Source code** ZIP is for developers, not installation.
 3. Run setup on **Windows 10/11 x64**, review the license, choose the available installation options and destination, then review and install.
 4. Existing users can choose **Update** to preserve settings/history, or **Fresh install** to reset this Windows account's settings, credentials and history while retaining downloaded files. Setup automatically closes the running app; finish important work first.
 5. Open **Settings** in FluxFetch and select your default download folder.
