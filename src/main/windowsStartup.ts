@@ -10,10 +10,14 @@ export function windowsStartupSettingSupported(): boolean {
 export function getLaunchWithWindowsMinimized(): boolean {
   if (!windowsStartupSettingSupported()) return false
   try {
-    return app.getLoginItemSettings({
+    const settings = app.getLoginItemSettings({
       path: process.execPath,
       args: [WINDOWS_STARTUP_MINIMIZED_ARG]
-    }).openAtLogin
+    })
+    // The installer historically registered FluxFetch at sign-in without command-line args.
+    // Treat that existing Run entry as enabled too; installer upgrades now add the minimized
+    // argument so future sign-ins go straight to the tray.
+    return settings.openAtLogin || settings.executableWillLaunchAtLogin
   } catch (error) {
     console.warn('[fluxfetch] could not read Windows startup setting', error)
     return false

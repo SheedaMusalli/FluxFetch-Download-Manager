@@ -31,6 +31,7 @@ Var FluxFetchAdminHint
 Var FluxFetchLicenseCheckbox
 Var FluxFetchLicenseAccepted
 Var FluxFetchFreshState
+Var FluxFetchExistingInstall
 Var FluxFetchUpdateRadio
 Var FluxFetchFreshRadio
 Var FluxFetchOmniLinkState
@@ -53,6 +54,8 @@ Var FluxFetchNetMergeCheckbox
   StrCpy $FluxFetchStartMenuState ${BST_CHECKED}
   StrCpy $FluxFetchDesktopState ${BST_CHECKED}
   StrCpy $FluxFetchSavedFolder ""
+  StrCpy $FluxFetchFreshState ${BST_UNCHECKED}
+  StrCpy $FluxFetchExistingInstall "0"
   StrCpy $FluxFetchInstallScope "current"
   ${if} $installMode == "all"
     StrCpy $FluxFetchInstallScope "all"
@@ -181,6 +184,16 @@ Var FluxFetchNetMergeCheckbox
 
 !macro FluxFetchFunctions
 Function FluxFetchInstallChoice
+  !ifdef FLUXFETCH_SETUP_PREVIEW
+    StrCpy $FluxFetchExistingInstall "1"
+  !else
+    ReadRegStr $0 SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" InstallLocation
+    ${if} $0 == ""
+      StrCpy $FluxFetchFreshState ${BST_UNCHECKED}
+      Abort
+    ${endif}
+    StrCpy $FluxFetchExistingInstall "1"
+  !endif
   !insertmacro MUI_HEADER_TEXT "INSTALLATION TYPE" "Choose how FluxFetch should be installed."
   nsDialogs::Create 1018
   Pop $0
@@ -682,9 +695,12 @@ Function FluxFetchReview
   SetCtlColors $0 "A99AFF" "202231"
   !insertmacro FluxLabel 12u 84u 94% 20u "$INSTDIR" "F0F0FA"
   SetCtlColors $0 "F0F0FA" "202231"
-  StrCpy $1 "Update / Keep settings and history"
-  ${if} $FluxFetchFreshState == ${BST_CHECKED}
-    StrCpy $1 "Fresh install / Reset settings and history"
+  StrCpy $1 "New installation / Create FluxFetch settings"
+  ${if} $FluxFetchExistingInstall == "1"
+    StrCpy $1 "Update / Keep settings and history"
+    ${if} $FluxFetchFreshState == ${BST_CHECKED}
+      StrCpy $1 "Fresh install / Reset settings and history"
+    ${endif}
   ${endif}
   !insertmacro FluxLabel 12u 106u 94% 16u "$1" "A4A8C1"
   SetCtlColors $0 "A4A8C1" "202231"
@@ -894,7 +910,7 @@ FunctionEnd
     ${endif}
   ${endif}
   ${if} $FluxFetchStartupState == ${BST_CHECKED}
-    StrCpy $0 '"$appExe"'
+    StrCpy $0 '"$appExe" --fluxfetch-start-minimized'
     WriteRegStr SHELL_CONTEXT "Software\Microsoft\Windows\CurrentVersion\Run" "FluxFetch" $0
   ${else}
     DeleteRegValue SHELL_CONTEXT "Software\Microsoft\Windows\CurrentVersion\Run" "FluxFetch"
