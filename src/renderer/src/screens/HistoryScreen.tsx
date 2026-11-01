@@ -560,7 +560,17 @@ export function HistoryScreen({
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent): void => {
       if (!(event.ctrlKey || event.metaKey) || event.altKey) return
-      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return
+      const modalIsOpen = Array.from(
+        document.querySelectorAll('[role="dialog"], [role="alertdialog"]')
+      ).some((dialog) => {
+        const style = window.getComputedStyle(dialog)
+        return (
+          style.display !== 'none' &&
+          style.visibility !== 'hidden' &&
+          dialog.getClientRects().length > 0
+        )
+      })
+      if (modalIsOpen) return
       const target = event.target
       const editing =
         target instanceof HTMLElement &&
