@@ -724,15 +724,24 @@ test.describe('UI journeys @smoke', () => {
     await fluxfetch.page.reload()
     const page = fluxfetch.page
     const search = page.getByRole('textbox', { name: 'Search downloads' })
-    // E2E windows start hidden. Linux does not deliver keyboard input to a hidden Electron
-    // window, so bring this one forward before exercising its real keyboard shortcuts.
-    await fluxfetch.evaluateMain(({ BrowserWindow }) => {
-      const window = BrowserWindow.getAllWindows()[0]
-      window?.show()
-      window?.focus()
-    }, null)
-    await page.bringToFront()
-    await page.keyboard.press('Control+f')
+    // The Linux CI runner has no window manager, so Xvfb cannot focus Electron reliably.
+    // Dispatch keyboard events into the renderer to exercise the same shortcut handler.
+    const shortcut = (key: string, shiftKey = false): Promise<void> =>
+      page.evaluate(
+        ({ key, shiftKey }) => {
+          window.dispatchEvent(
+            new KeyboardEvent('keydown', {
+              key,
+              ctrlKey: true,
+              shiftKey,
+              bubbles: true,
+              cancelable: true
+            })
+          )
+        },
+        { key, shiftKey }
+      )
+    await shortcut('f')
     await expect(search).toBeFocused()
     await search.fill('example.com/alpha')
     await expect(page.locator('tbody tr[data-download-id]')).toHaveCount(1)
@@ -763,10 +772,10 @@ test.describe('UI journeys @smoke', () => {
     await expect.poll(() => fileName(0)).toBe('zeta10.zip')
 
     await search.blur()
-    await page.keyboard.press('Control+n')
+    await shortcut('n')
     await expect(page.getByRole('button', { name: 'Downloads library' })).toBeVisible()
     await page.getByRole('button', { name: 'Downloads library' }).click()
-    await page.keyboard.press('Control+Shift+q')
+    await shortcut('q', true)
     await expect(page.getByRole('heading', { name: 'Schedule and batch downloads' })).toBeVisible()
     await page.locator('[data-slot="dialog-close"]').click()
   })
