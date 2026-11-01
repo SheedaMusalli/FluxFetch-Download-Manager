@@ -1,5 +1,5 @@
 import { app } from 'electron'
-import { spawnSync } from 'node:child_process'
+import { spawnSync, type SpawnSyncReturns } from 'node:child_process'
 import { join } from 'node:path'
 import { testKnobs } from './testKnobs'
 
@@ -7,7 +7,11 @@ export const WINDOWS_STARTUP_MINIMIZED_ARG = '--fluxfetch-start-minimized'
 const RUN_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'
 const MACHINE_RUN_KEY = 'HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'
 
-function registryCommand(action: 'query' | 'add' | 'delete', key: string, extra: string[] = []) {
+function registryCommand(
+  action: 'query' | 'add' | 'delete',
+  key: string,
+  extra: string[] = []
+): SpawnSyncReturns<string> {
   const executable = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'reg.exe')
   return spawnSync(executable, [action, key, ...extra], {
     encoding: 'utf8',
