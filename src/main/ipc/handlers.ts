@@ -36,6 +36,11 @@ import {
   saveRemoteCredentials
 } from '../remoteManagement'
 import { displayProxyAddress, loadProxyUrl, saveProxyConfig } from '../proxySettings'
+import {
+  getLaunchWithWindowsMinimized,
+  setLaunchWithWindowsMinimized,
+  windowsStartupSettingSupported
+} from '../windowsStartup'
 import { presentWindow } from '../windowActivation'
 import {
   guardOmniLinkLaunch,
@@ -313,6 +318,10 @@ export function registerIpcHandlers(
     if (patch?.remoteManagement) await restartRemoteManagement(manager)
   })
 
+  handle('setLaunchWithWindowsMinimized', (_event, enabled) =>
+    setLaunchWithWindowsMinimized(enabled)
+  )
+
   // Answered via sendSync from the preload, which blocks the page until returnValue is set — so a
   // throw here must still reply (with no saved values) rather than leave the window never showing.
   ipcMain.on(IpcChannels.getInitialState, async (event) => {
@@ -333,6 +342,8 @@ export function registerIpcHandlers(
       event.returnValue = {
         homeDir: getHomeDir(),
         downloadsDir: getDefaultDownloadsDir(),
+        launchWithWindowsMinimizedSupported: windowsStartupSettingSupported(),
+        launchWithWindowsMinimized: getLaunchWithWindowsMinimized(),
         themeSource: currentThemeSource(),
         networkPreferences: settings.networkPreferences ?? {},
         destinationDir: destinationExists ? destinationDir : undefined,
@@ -349,6 +360,8 @@ export function registerIpcHandlers(
       event.returnValue = {
         homeDir: '',
         downloadsDir: '',
+        launchWithWindowsMinimizedSupported: false,
+        launchWithWindowsMinimized: false,
         themeSource: currentThemeSource(),
         networkPreferences: {},
         maxDownloadSpeedBytesPerSec: 0,

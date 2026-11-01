@@ -212,6 +212,8 @@ export interface AppSettings {
 export interface InitialState {
   homeDir: string
   downloadsDir: string
+  launchWithWindowsMinimizedSupported: boolean
+  launchWithWindowsMinimized: boolean
   themeSource: ThemeSource
   networkPreferences: NetworkPreferences
   /** The last folder picked, if it still exists — otherwise the renderer uses downloadsDir. */

@@ -8,6 +8,7 @@ export const IpcChannels = {
   probeUrl: 'download:probe',
   getInitialState: 'app:get-initial-state',
   updateSettings: 'app:update-settings',
+  setLaunchWithWindowsMinimized: 'app:set-launch-with-windows-minimized',
   chooseDestinationFolder: 'dialog:choose-destination-folder',
   readClipboardText: 'clipboard:read-text',
   revealInFolder: 'shell:reveal-in-folder',

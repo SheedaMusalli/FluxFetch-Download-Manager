@@ -20,7 +20,7 @@ FluxFetch is a Windows app for managing downloads and torrents. It can run sever
 
 ## Main features
 
-The Downloads Library shows every active transfer alongside completed history. Direct downloads run at the same time, with their own progress, speed, pause/resume controls, and recovery after restart. You can queue URL batches, schedule them, and avoid adding links that are already waiting. Library filters and sorting survive a restart; bulk selection can copy names, URLs, or paths, and visible results can be exported to CSV. Press **Ctrl+F** to search, **Ctrl+N** to add a URL, or **Ctrl+Shift+Q** to open the queue. Press **Esc** to clear a search.
+The Downloads Library shows every active transfer alongside completed history. Direct downloads run at the same time, with their own progress, speed, pause/resume controls, and recovery after restart. You can queue URL batches, schedule them, and avoid adding links that are already waiting. Library filters and sorting survive a restart; bulk selection can copy names, URLs, or paths, and visible results can be exported to CSV. On Windows, you can also start FluxFetch at sign-in minimized to the system tray. Press **Ctrl+F** to search, **Ctrl+N** to add a URL, or **Ctrl+Shift+Q** to open the queue. Press **Esc** to clear a search.
 
 FluxFetch handles magnet links and `.torrent` files without a separate torrent client or Python installation. The torrent panel shows files, peers, trackers, and transfer limits; the library keeps each torrent visible while it downloads or seeds.
 

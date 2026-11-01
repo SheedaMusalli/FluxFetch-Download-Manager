@@ -32,6 +32,7 @@ export interface IpcContract {
   deviceBindingSupported: { args: []; result: boolean }
   openNetworkSettings: { args: []; result: void }
   updateSettings: { args: [patch: AppSettings]; result: void }
+  setLaunchWithWindowsMinimized: { args: [enabled: boolean]; result: boolean }
   probeUrl: { args: [url: string, userAgent?: string]; result: ProbeResult }
   chooseDestinationFolder: { args: [defaultPath: string]; result: string | null }
   readClipboardText: { args: []; result: string }

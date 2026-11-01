@@ -39,6 +39,8 @@ const fluxfetchApi = {
   deviceBindingSupported: () => invoke('deviceBindingSupported'),
   openNetworkSettings: () => invoke('openNetworkSettings'),
   updateSettings: (patch: AppSettings) => invoke('updateSettings', patch),
+  setLaunchWithWindowsMinimized: (enabled: boolean) =>
+    invoke('setLaunchWithWindowsMinimized', enabled),
   probeUrl: (url: string, userAgent?: string) => invoke('probeUrl', url, userAgent),
   chooseDestinationFolder: (defaultPath: string) => invoke('chooseDestinationFolder', defaultPath),
   readClipboardText: () => invoke('readClipboardText'),

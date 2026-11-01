@@ -38,6 +38,7 @@ interface AppStore {
 
   homeDir: string
   downloadsDir: string
+  launchWithWindowsMinimized: boolean
 
   /** FluxFetch focuses on one download at a time — this is it. */
   currentDownload: DownloadState | null
@@ -77,6 +78,7 @@ interface AppStore {
   setCustomUserAgent: (userAgent: string) => void
   setPostDownloadAction: (action: PostDownloadAction) => void
   setProxyEnabled: (enabled: boolean) => void
+  setLaunchWithWindowsMinimized: (enabled: boolean) => Promise<boolean>
 }
 
 // Settings saved by the main process, read once before the first paint (see InitialState).
@@ -100,6 +102,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   homeDir: initial.homeDir,
   downloadsDir: initial.downloadsDir,
+  launchWithWindowsMinimized: initial.launchWithWindowsMinimized,
 
   currentDownload: null,
   speedHistory: [],
@@ -234,5 +237,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
     set({ postDownloadAction })
     persist({ postDownloadAction })
   },
-  setProxyEnabled: (proxyEnabled) => set({ proxyEnabled })
+  setProxyEnabled: (proxyEnabled) => set({ proxyEnabled }),
+  setLaunchWithWindowsMinimized: async (enabled) => {
+    try {
+      const actual = await window.fluxfetch.setLaunchWithWindowsMinimized(enabled)
+      set({ launchWithWindowsMinimized: actual })
+      return actual
+    } catch {
+      return false
+    }
+  }
 }))

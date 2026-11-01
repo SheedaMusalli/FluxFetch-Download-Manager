@@ -16,6 +16,7 @@ import { startBrowserBridge } from './browser/bridge'
 import { restartRemoteManagement, stopRemoteManagement } from './remoteManagement'
 import { presentWindow } from './windowActivation'
 import { TorrentManager } from './torrent/libtorrent'
+import { WINDOWS_STARTUP_MINIMIZED_ARG } from './windowsStartup'
 
 // A build can be staged at a different depth before being packaged under out/.
 // Resolve packaged icons from the app root instead of the build-time location.
@@ -64,6 +65,11 @@ let transferStatusTimer: NodeJS.Timeout | null = null
 let browserBridge: import('node:net').Server | null = null
 let torrentManager: TorrentManager | null = null
 let quitting = false
+const launchedWithWindowsMinimized =
+  process.platform === 'win32' &&
+  app.isPackaged &&
+  !testKnobs.userDataDir &&
+  process.argv.includes(WINDOWS_STARTUP_MINIMIZED_ARG)
 let finishProtocolInitialization!: () => void
 const protocolInitialization = new Promise<void>((resolve) => {
   finishProtocolInitialization = resolve
@@ -210,7 +216,7 @@ function createWindow(): void {
   setWindowTaskbarDetails(mainWindow)
 
   mainWindow.on('ready-to-show', () => {
-    if (!testKnobs.hideWindow) mainWindow?.show()
+    if (!testKnobs.hideWindow && (!launchedWithWindowsMinimized || !tray)) mainWindow?.show()
   })
 
   mainWindow.on('close', (event) => {
@@ -352,6 +358,17 @@ app.whenReady().then(async () => {
     mainWindow?.setBackgroundColor(nativeTheme.shouldUseDarkColors ? '#1c1c1e' : '#ffffff')
   })
 
+  if (process.platform === 'win32' && !testKnobs.userDataDir) {
+    tray = new Tray(icon)
+    tray.setToolTip('FluxFetch — no active downloads')
+    tray.setContextMenu(
+      Menu.buildFromTemplate([
+        { label: 'Open FluxFetch', click: showWindow },
+        { label: 'Quit FluxFetch', click: () => app.quit() }
+      ])
+    )
+    tray.on('double-click', showWindow)
+  }
   createWindow()
   windowsInitialized = true
   finishProtocolInitialization()
@@ -383,17 +400,6 @@ app.whenReady().then(async () => {
   }
   transferStatusTimer = setInterval(() => void updateTransferStatus(), 1000)
   transferStatusTimer.unref()
-  if (process.platform === 'win32' && !testKnobs.userDataDir) {
-    tray = new Tray(icon)
-    tray.setToolTip('FluxFetch — no active downloads')
-    tray.setContextMenu(
-      Menu.buildFromTemplate([
-        { label: 'Open FluxFetch', click: showWindow },
-        { label: 'Quit FluxFetch', click: () => app.quit() }
-      ])
-    )
-    tray.on('double-click', showWindow)
-  }
   void updateTransferStatus()
   if (
     process.platform === 'win32' &&

@@ -24,6 +24,8 @@ export function SettingsDialog({
   const customUserAgent = useAppStore((s) => s.customUserAgent)
   const setCustomUserAgent = useAppStore((s) => s.setCustomUserAgent)
   const checkForUpdate = useAppStore((s) => s.checkForUpdate)
+  const launchWithWindowsMinimized = useAppStore((s) => s.launchWithWindowsMinimized)
+  const setLaunchWithWindowsMinimized = useAppStore((s) => s.setLaunchWithWindowsMinimized)
   const [authOrigins, setAuthOrigins] = useState<string[]>([])
   const [authOrigin, setAuthOrigin] = useState('https://')
   const [authCookie, setAuthCookie] = useState('')
@@ -49,6 +51,7 @@ export function SettingsDialog({
   const [proxyPassword, setProxyPassword] = useState('')
   const [proxyStatus, setProxyStatus] = useState('')
   const [proxyBusy, setProxyBusy] = useState(false)
+  const [startupStatus, setStartupStatus] = useState('')
   useEffect(() => {
     if (open)
       void window.fluxfetch
@@ -471,6 +474,41 @@ export function SettingsDialog({
           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Appearance and updates
           </h3>
+          {window.fluxfetch.initialState.launchWithWindowsMinimizedSupported && (
+            <div className="rounded-lg border border-border p-3">
+              <label className="flex items-start gap-3 text-sm">
+                <input
+                  type="checkbox"
+                  aria-label="Launch with Windows (Minimized)"
+                  checked={launchWithWindowsMinimized}
+                  onChange={(event) => {
+                    const enabled = event.target.checked
+                    setStartupStatus('')
+                    void setLaunchWithWindowsMinimized(enabled).then((saved) => {
+                      setStartupStatus(
+                        saved
+                          ? ''
+                          : 'Windows did not enable this startup option. Check your startup app settings and try again.'
+                      )
+                    })
+                  }}
+                  className="mt-0.5 accent-primary"
+                />
+                <span>
+                  <span className="block font-medium">Launch with Windows (Minimized)</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    Start FluxFetch when you sign in. It will stay in the system tray until you open
+                    its window.
+                  </span>
+                </span>
+              </label>
+              {startupStatus && (
+                <p role="status" className="mt-2 text-xs text-muted-foreground">
+                  {startupStatus}
+                </p>
+              )}
+            </div>
+          )}
           <div className="flex items-center justify-between rounded-lg border border-border p-3">
             <span className="flex items-center gap-2 text-sm">
               <Palette className="size-4" /> Theme
