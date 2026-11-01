@@ -431,6 +431,15 @@ test.describe('UI journeys @smoke', () => {
   })
 
   test('queue preview skips repeated links and links already waiting', async ({ fluxfetch }) => {
+    const encryptionAvailable = await fluxfetch.evaluateMain(
+      ({ safeStorage }) => safeStorage.isEncryptionAvailable(),
+      null
+    )
+    test.skip(
+      !encryptionAvailable,
+      'This runner has no OS credential store for encrypted queue data'
+    )
+
     const page = fluxfetch.page
     await page.getByRole('button', { name: /^Open download queue/ }).click()
     await page
@@ -715,6 +724,14 @@ test.describe('UI journeys @smoke', () => {
     await fluxfetch.page.reload()
     const page = fluxfetch.page
     const search = page.getByRole('textbox', { name: 'Search downloads' })
+    // E2E windows start hidden. Linux does not deliver keyboard input to a hidden Electron
+    // window, so bring this one forward before exercising its real keyboard shortcuts.
+    await fluxfetch.evaluateMain(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0]
+      window?.show()
+      window?.focus()
+    }, null)
+    await page.bringToFront()
     await page.keyboard.press('Control+f')
     await expect(search).toBeFocused()
     await search.fill('example.com/alpha')
