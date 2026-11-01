@@ -75,7 +75,10 @@ Var FluxFetchNetMergeCheckbox
   ${ifNot} ${Errors}
     StrCpy $FluxFetchFirefoxState $0
   ${endif}
-  ReadRegStr $0 SHELL_CONTEXT "Software\Microsoft\Windows\CurrentVersion\Run" "FluxFetch"
+  ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "FluxFetch"
+  ${if} $0 == ""
+    ReadRegStr $0 HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "FluxFetch"
+  ${endif}
   ${if} $0 != ""
     StrCpy $FluxFetchStartupState ${BST_CHECKED}
   ${endif}
@@ -911,9 +914,17 @@ FunctionEnd
   ${endif}
   ${if} $FluxFetchStartupState == ${BST_CHECKED}
     StrCpy $0 '"$appExe" --fluxfetch-start-minimized'
-    WriteRegStr SHELL_CONTEXT "Software\Microsoft\Windows\CurrentVersion\Run" "FluxFetch" $0
+    # Keep startup user-scoped so the in-app setting can change it without elevation,
+    # including when FluxFetch itself was installed for all users.
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "FluxFetch" $0
+    ${if} $installMode == "all"
+      DeleteRegValue HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "FluxFetch"
+    ${endif}
   ${else}
-    DeleteRegValue SHELL_CONTEXT "Software\Microsoft\Windows\CurrentVersion\Run" "FluxFetch"
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "FluxFetch"
+    ${if} $installMode == "all"
+      DeleteRegValue HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "FluxFetch"
+    ${endif}
   ${endif}
   ${if} $FluxFetchStartMenuState == ${BST_CHECKED}
     CreateShortCut "$newStartMenuLink" "$appExe" "" "$appExe" 0 "" "" "${APP_DESCRIPTION}"
@@ -960,7 +971,10 @@ FunctionEnd
   DeleteRegKey HKCU "Software\Google\Chrome\NativeMessagingHosts\com.fluxfetch.browser"
   DeleteRegKey HKCU "Software\Microsoft\Edge\NativeMessagingHosts\com.fluxfetch.browser"
   DeleteRegKey HKCU "Software\Mozilla\NativeMessagingHosts\com.fluxfetch.browser"
-  DeleteRegValue SHELL_CONTEXT "Software\Microsoft\Windows\CurrentVersion\Run" "FluxFetch"
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "FluxFetch"
+  ${if} $installMode == "all"
+    DeleteRegValue HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "FluxFetch"
+  ${endif}
   DeleteRegKey SHELL_CONTEXT "Software\FluxFetch\Installer"
   WinShell::UninstShortcut "$oldStartMenuLink"
   Delete "$oldStartMenuLink"
