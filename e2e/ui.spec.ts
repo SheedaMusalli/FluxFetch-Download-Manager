@@ -30,18 +30,21 @@ async function stubNativeUi(
 }
 
 async function openAddUrl(page: Page): Promise<void> {
-  const addUrl = page.getByRole('button', { name: '+ Add URL', exact: true })
+  // The history screen offers this action in both its toolbar and its empty-state panel.
+  // Both are intentionally visible when the library is empty, so scope interactions to the
+  // first (toolbar) action instead of relying on a unique accessible name.
+  const addUrl = page.getByRole('button', { name: '+ Add URL', exact: true }).first()
   if (await addUrl.isVisible()) await addUrl.click()
 }
 
 test.describe('UI journeys @smoke', () => {
   test('add-download page has a clear route back to download history', async ({ fluxfetch }) => {
     const page = fluxfetch.page
-    await page.getByRole('button', { name: '+ Add URL', exact: true }).click()
+    await page.getByRole('button', { name: '+ Add URL', exact: true }).first().click()
     const backButton = page.getByRole('button', { name: 'Downloads library' })
     await expect(backButton).toBeVisible()
     await backButton.click()
-    await expect(page.getByRole('button', { name: '+ Add URL', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '+ Add URL', exact: true }).first()).toBeVisible()
   })
 
   test('starts a real Cloudflare speed test only after the user chooses to', async ({
