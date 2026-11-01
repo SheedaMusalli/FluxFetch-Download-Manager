@@ -38,11 +38,17 @@ Var FluxFetchOmniLinkState
 Var FluxFetchOmniLinkCheckbox
 Var FluxFetchNetMergeState
 Var FluxFetchNetMergeCheckbox
+Var FluxFetchUninstallerReady
 !endif
 
 !macro customInit
 !ifndef BUILD_UNINSTALLER
   InitPluginsDir
+  !ifdef UNINSTALLER_OUT_FILE
+    # Stage this setup's uninstaller so an in-place upgrade can replace the
+    # installed uninstaller before electron-builder invokes it.
+    File /oname=$PLUGINSDIR\FluxFetch-Uninstaller.exe "${UNINSTALLER_OUT_FILE}"
+  !endif
   File /oname=$PLUGINSDIR\FluxFetchButtons.dll "${BUILD_RESOURCES_DIR}\FluxFetchButtons.dll"
   File /oname=$PLUGINSDIR\FluxFetch.ico "${BUILD_RESOURCES_DIR}\icon.ico"
   File /oname=$PLUGINSDIR\FluxFetch-license.txt "${BUILD_RESOURCES_DIR}\installer-license.txt"
@@ -75,11 +81,14 @@ Var FluxFetchNetMergeCheckbox
   ${ifNot} ${Errors}
     StrCpy $FluxFetchFirefoxState $0
   ${endif}
+  StrCpy $FluxFetchStartupState ${BST_UNCHECKED}
   ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "FluxFetch"
-  ${if} $0 == ""
+  Call FluxFetchStartupEntryMatches
+  ${if} $1 == "0"
     ReadRegStr $0 HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "FluxFetch"
+    Call FluxFetchStartupEntryMatches
   ${endif}
-  ${if} $0 != ""
+  ${if} $1 == "1"
     StrCpy $FluxFetchStartupState ${BST_CHECKED}
   ${endif}
   ClearErrors
@@ -186,6 +195,21 @@ Var FluxFetchNetMergeCheckbox
 !macroend
 
 !macro FluxFetchFunctions
+Function FluxFetchStartupEntryMatches
+  StrCpy $1 "0"
+  StrCpy $2 '"$INSTDIR\fluxfetch.exe" --fluxfetch-start-minimized'
+  ${if} $0 == $2
+    StrCpy $1 "1"
+    Return
+  ${endif}
+  # Accept the older startup entry so an installer upgrade can convert it to
+  # the tray launch command while preserving the user's existing choice.
+  StrCpy $2 '"$INSTDIR\fluxfetch.exe"'
+  ${if} $0 == $2
+    StrCpy $1 "1"
+  ${endif}
+FunctionEnd
+
 Function FluxFetchInstallChoice
   !ifdef FLUXFETCH_SETUP_PREVIEW
     StrCpy $FluxFetchExistingInstall "1"
@@ -478,7 +502,7 @@ Function FluxFetchConfigure
   System::Call 'uxtheme::SetWindowTheme(p $FluxFetchStartMenuCheckbox, w "", w "")'
   SetCtlColors $FluxFetchStartMenuCheckbox "F0F0FA" "171925"
   ${NSD_SetState} $FluxFetchStartMenuCheckbox $FluxFetchStartMenuState
-  ${NSD_CreateCheckBox} 0 163u 100% 16u "Start when I sign in"
+  ${NSD_CreateCheckBox} 0 163u 100% 16u "Launch with Windows (Minimized)"
   Pop $FluxFetchStartupCheckbox
   System::Call '$PLUGINSDIR\FluxFetchButtons.dll::StyleChoice(p $FluxFetchStartupCheckbox, i 0)'
   System::Call 'uxtheme::SetWindowTheme(p $FluxFetchStartupCheckbox, w "", w "")'
@@ -599,6 +623,10 @@ Function FluxFetchConfigureLeave
   ${if} $4 == 1
     RMDir "$INSTDIR"
   ${endif}
+  Call FluxFetchPatchExistingUninstallers
+  ${if} $FluxFetchUninstallerReady != "1"
+    Abort "Setup couldn't prepare FluxFetch's existing uninstaller. No files were removed. Run Setup again with permission to write to the current installation folder."
+  ${endif}
   Return
   path_error:
   SetCtlColors $FluxFetchFolderError "FFADBA" "171925"
@@ -606,6 +634,55 @@ Function FluxFetchConfigureLeave
   SendMessage $FluxFetchFolder ${EM_SETSEL} 0 -1
   System::Call 'user32::SetFocus(p $FluxFetchFolder)'
   Abort
+FunctionEnd
+
+Function FluxFetchPatchExistingUninstallers
+  StrCpy $FluxFetchUninstallerReady "1"
+  ReadRegStr $0 HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation
+  Call FluxFetchPatchOneUninstaller
+  ${if} $installMode == "all"
+    ReadRegStr $0 HKLM "${INSTALL_REGISTRY_KEY}" InstallLocation
+    Call FluxFetchPatchOneUninstaller
+  ${endif}
+FunctionEnd
+
+Function FluxFetchPatchOneUninstaller
+  ${if} $0 == ""
+    Return
+  ${endif}
+  ${ifNot} ${FileExists} "$0\${UNINSTALL_FILENAME}"
+    Return
+  ${endif}
+  Delete "$0\FluxFetch-Uninstaller.exe"
+  Delete "$0\${UNINSTALL_FILENAME}.new"
+  ClearErrors
+  CopyFiles /SILENT "$PLUGINSDIR\FluxFetch-Uninstaller.exe" "$0"
+  ${if} ${Errors}
+    Goto patchUninstallerFailed
+  ${endif}
+  ClearErrors
+  Rename "$0\FluxFetch-Uninstaller.exe" "$0\${UNINSTALL_FILENAME}.new"
+  ${if} ${Errors}
+    Goto patchUninstallerFailed
+  ${endif}
+  Delete "$0\${UNINSTALL_FILENAME}.previous"
+  ClearErrors
+  Rename "$0\${UNINSTALL_FILENAME}" "$0\${UNINSTALL_FILENAME}.previous"
+  ${if} ${Errors}
+    Goto patchUninstallerFailed
+  ${endif}
+  ClearErrors
+  Rename "$0\${UNINSTALL_FILENAME}.new" "$0\${UNINSTALL_FILENAME}"
+  ${if} ${Errors}
+    Rename "$0\${UNINSTALL_FILENAME}.previous" "$0\${UNINSTALL_FILENAME}"
+    Goto patchUninstallerFailed
+  ${endif}
+  Delete "$0\${UNINSTALL_FILENAME}.previous"
+  Return
+  patchUninstallerFailed:
+  Delete "$0\FluxFetch-Uninstaller.exe"
+  Delete "$0\${UNINSTALL_FILENAME}.new"
+  StrCpy $FluxFetchUninstallerReady "0"
 FunctionEnd
 
 Function FluxFetchComponents
@@ -718,7 +795,7 @@ Function FluxFetchReview
     StrCpy $1 "Shortcuts: None"
   ${endif}
   ${if} $FluxFetchStartupState == ${BST_CHECKED}
-    StrCpy $1 "$1 / Start at sign-in"
+    StrCpy $1 "$1 / Launch at sign-in (minimized)"
   ${endif}
   !insertmacro FluxLabel 12u 124u 94% 16u "$1" "A4A8C1"
   SetCtlColors $0 "A4A8C1" "202231"
@@ -978,7 +1055,49 @@ FunctionEnd
   DeleteRegKey SHELL_CONTEXT "Software\FluxFetch\Installer"
   WinShell::UninstShortcut "$oldStartMenuLink"
   Delete "$oldStartMenuLink"
+  Delete "$DESKTOP\FluxFetch.lnk"
+  Delete "$SMPROGRAMS\FluxFetch\FluxFetch.lnk"
+  RMDir "$SMPROGRAMS\FluxFetch"
+
+  ${ifNot} ${isUpdated}
+  ${andIfNot} ${Silent}
+    # Never show cleanup prompts or remove app state during a silent upgrade.
+    # The normal interactive uninstall asks before deleting the user profile.
+    RMDir /r "$TEMP\FluxFetch"
+    RMDir /r "$TEMP\fluxfetch-archive-preview"
+    Call un.FluxFetchRemoveYouTubeTemp
+    MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON1 "Remove FluxFetch settings, saved credentials, download history, and other app data from this Windows account? Completed files in your chosen download folders will be kept." IDYES removeFluxFetchData
+    Goto keepFluxFetchData
+    removeFluxFetchData:
+      SetShellVarContext current
+      RMDir /r "$APPDATA\FluxFetch"
+      RMDir /r "$APPDATA\Plexo"
+      RMDir /r "$LOCALAPPDATA\FluxFetch"
+    keepFluxFetchData:
+  ${endif}
 !macroend
+
+!ifdef BUILD_UNINSTALLER
+Function un.FluxFetchRemoveYouTubeTemp
+  FindFirst $0 $1 "$TEMP\fluxfetch-youtube-cookie-*"
+  fluxfetchCookieLoop:
+    StrCmp $1 "" fluxfetchCookieDone
+    RMDir /r "$TEMP\$1"
+    FindNext $0 $1
+    Goto fluxfetchCookieLoop
+  fluxfetchCookieDone:
+    FindClose $0
+
+  FindFirst $0 $1 "$TEMP\.fluxfetch-youtube-*"
+  fluxfetchYoutubeLoop:
+    StrCmp $1 "" fluxfetchYoutubeDone
+    RMDir /r "$TEMP\$1"
+    FindNext $0 $1
+    Goto fluxfetchYoutubeLoop
+  fluxfetchYoutubeDone:
+    FindClose $0
+FunctionEnd
+!endif
 
 
 

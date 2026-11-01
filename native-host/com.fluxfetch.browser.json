@@ -3,5 +3,8 @@
   "description": "FluxFetch browser integration",
   "path": "FluxFetch.BrowserHost.exe",
   "type": "stdio",
-  "allowed_origins": ["chrome-extension://hhepjnimojcdbcifmjaflopikglidjbo/"]
+  "allowed_origins": [
+    "chrome-extension://hhepjnimojcdbcifmjaflopikglidjbo/",
+    "chrome-extension://neeekepknfpldodjkgdhejoajfkkpodl/"
+  ]
 }

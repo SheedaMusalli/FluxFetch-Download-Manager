@@ -36,15 +36,28 @@ class Program {
   static int Main(string[] args) {
     try {
       string root = AppDomain.CurrentDomain.BaseDirectory;
-      string expected = File.ReadAllText(Path.Combine(root, "extension-id.txt")).Trim();
+      string[] expectedIds = new[] {
+        File.ReadAllText(Path.Combine(root, "extension-id.txt")).Trim(),
+        File.Exists(Path.Combine(root, "edge-extension-id.txt"))
+          ? File.ReadAllText(Path.Combine(root, "edge-extension-id.txt")).Trim()
+          : ""
+      };
       // Windows Chromium also supplies --parent-window (0 for service workers).
       // Keep the exact origin allowlist while accepting that documented argument.
       ulong parentWindow;
       bool hasParentWindow = args.Length == 2 &&
         args[1].StartsWith("--parent-window=", StringComparison.Ordinal) &&
         UInt64.TryParse(args[1].Substring("--parent-window=".Length), out parentWindow);
-      bool chromium = (args.Length == 1 || hasParentWindow) &&
-        args[0] == "chrome-extension://" + expected + "/";
+      bool allowedChromiumOrigin = false;
+      if (args.Length > 0) {
+        foreach (string id in expectedIds) {
+          if (!String.IsNullOrEmpty(id) && args[0] == "chrome-extension://" + id + "/") {
+            allowedChromiumOrigin = true;
+            break;
+          }
+        }
+      }
+      bool chromium = (args.Length == 1 || hasParentWindow) && allowedChromiumOrigin;
       // Firefox passes the native manifest path and add-on ID; Chromium passes its origin.
       bool firefox = args.Length == 2 && args[1] == "fluxfetch@fluxfetch.app" &&
         String.Equals(Path.GetFileName(args[0]), "com.fluxfetch.browser.firefox.json", StringComparison.OrdinalIgnoreCase);

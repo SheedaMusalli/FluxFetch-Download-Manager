@@ -60,8 +60,13 @@ assert.equal(manifest.manifest_version, 3)
 const native = JSON.parse(
   fs.readFileSync(path.join(root, 'native-host/com.fluxfetch.browser.json'))
 )
-assert.deepEqual(native.allowed_origins, [`chrome-extension://${id}/`])
+const edgeId = 'neeekepknfpldodjkgdhejoajfkkpodl'
+assert.deepEqual(native.allowed_origins, [
+  `chrome-extension://${id}/`,
+  `chrome-extension://${edgeId}/`
+])
 assert.equal(fs.readFileSync(path.join(root, 'native-host/extension-id.txt'), 'utf8'), id)
+assert.equal(fs.readFileSync(path.join(root, 'native-host/edge-extension-id.txt'), 'utf8'), edgeId)
 assert.deepEqual(archiveBytes, fs.readFileSync(path.join(root, 'release/FluxFetch-Chrome.zip')))
 console.log('PASS: CRX3 RSA signature, embedded ZIP, manifest key and native-host ID:', id)
 
@@ -94,7 +99,7 @@ console.log(
 const edgeZip = new AdmZip(path.join(root, 'release/FluxFetch-Edge.zip'))
 const edgeManifest = JSON.parse(edgeZip.readAsText('manifest.json'))
 assert.equal(edgeManifest.manifest_version, 3)
-assert.equal(edgeManifest.version, '1.0.0')
+assert.equal(edgeManifest.version, '2.0.0')
 assert.ok(!edgeManifest.key, 'Edge package must not contain the Chrome-only key field')
 assert.ok(edgeZip.readFile('icon.png'))
 console.log('PASS: Edge package manifest omits Chrome identity key and includes extension assets')

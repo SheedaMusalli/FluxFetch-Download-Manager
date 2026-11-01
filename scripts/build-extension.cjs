@@ -22,6 +22,9 @@ const idBytes = crypto.createHash('sha256').update(publicKey).digest().subarray(
 const id = [...idBytes.toString('hex')]
   .map((c) => String.fromCharCode(97 + parseInt(c, 16)))
   .join('')
+// Microsoft Edge assigns a different store ID than Chrome. Include the
+// published ID in the shared native host's allowed origins.
+const edgeId = 'neeekepknfpldodjkgdhejoajfkkpodl'
 const manifestFile = path.join(root, 'extension', 'manifest.json')
 const manifest = JSON.parse(fs.readFileSync(manifestFile))
 manifest.key = publicKey.toString('base64')
@@ -39,13 +42,14 @@ fs.writeFileSync(
       description: 'FluxFetch browser integration',
       path: 'FluxFetch.BrowserHost.exe',
       type: 'stdio',
-      allowed_origins: [`chrome-extension://${id}/`]
+      allowed_origins: [`chrome-extension://${id}/`, `chrome-extension://${edgeId}/`]
     },
     null,
     2
   )}\n`
 )
 const firefoxId = 'fluxfetch@fluxfetch.app'
+fs.writeFileSync(path.join(root, 'native-host', 'edge-extension-id.txt'), edgeId)
 const firefoxManifestFile = path.join(root, 'native-host', 'com.fluxfetch.browser.firefox.json')
 fs.writeFileSync(
   firefoxManifestFile,
@@ -92,7 +96,7 @@ fs.cpSync(path.join(root, 'extension'), edgeDir, { recursive: true })
 const edgeManifestPath = path.join(edgeDir, 'manifest.json')
 const edgeManifest = JSON.parse(fs.readFileSync(edgeManifestPath, 'utf8'))
 delete edgeManifest.key
-edgeManifest.version = '1.0.0'
+edgeManifest.version = '2.0.0'
 fs.writeFileSync(edgeManifestPath, `${JSON.stringify(edgeManifest, null, 2)}\n`)
 // Keep generated metadata in the same format enforced by `npm run format:check`.
 execFileSync(
